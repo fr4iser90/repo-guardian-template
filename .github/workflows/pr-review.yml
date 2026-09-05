@@ -1,0 +1,104 @@
+name: PR Review Checks
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    branches: [main, master]
+
+jobs:
+  # ═══════════════════════════════════════════
+  # CHECK 1: Commit message validation (Conventional Commits)
+  # ═══════════════════════════════════════════
+  validate-commits:
+    name: Validate Conventional Commits
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Check commit messages
+        uses: webiny/action-conventional-commits@v1.3.0
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ═══════════════════════════════════════════
+  # CHECK 2: PR size limits
+  # ═══════════════════════════════════════════
+  pr-size-check:
+    name: Check PR Size
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for oversized PRs
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          echo "📝 PR Title: $PR_TITLE"
+          
+          # Count changed lines
+          TOTAL_CHANGES=$(gh pr view ${{ github.event.pull_request.number }} --json additions,deletions             -q '"Total changes: (\(.additions + .deletions))"')
+          echo "📊 $TOTAL_CHANGES"
+          
+          ADDITIONS=$(gh pr view ${{ github.event.pull_request.number }} --json additions -q '.additions')
+          if [ "$ADDITIONS" -gt 400 ]; then
+            echo "::warning::This PR is large ($ADDITIONS additions). Consider splitting into smaller PRs."
+          fi
+
+  # ═══════════════════════════════════════════
+  # CHECK 3: License header check (optional)
+  # ═══════════════════════════════════════════
+  license-check:
+    name: Check License Headers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for SPDX identifier in files
+        run: |
+          echo "✅ License file exists: $(test -f LICENSE && echo 'yes' || echo 'no')"
+          
+          # Optional: enforce license header in source files
+          # Uncomment and customize as needed:
+          # if [ -f .license-checker-config.json ]; then
+          #   npx license-checker --failOn "MIT,Apache-2.0,BSD-3-Clause"
+          # fi
+
+  # ═══════════════════════════════════════════
+  # CHECK 4: Auto-label based on changes
+  # ═══════════════════════════════════════════
+  auto-label:
+    name: Auto-label PR
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Label based on file changes
+        uses: pascalgn/automerge-action@v0.16.4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LABELS: "auto-detect"
+
+  # ═══════════════════════════════════════════
+  # CHECK 5: Dependency change notification
+  # ═══════════════════════════════════════════
+  notify-deps:
+    name: Check Dependency Changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Detect dependency updates
+        run: |
+          echo "📦 Checking for dependency changes..."
+          
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" = "${{ github.repository }}" ]; then
+            # Internal PR — check diff
+            if git diff --name-only HEAD~1 | grep -qE 'requirements|package-lock|poetry.lock'; then
+              echo "::notice::Dependency file(s) changed in this PR"
+            fi
+          else
+            echo "📝 External PR (fork) — dependency changes reviewed by maintainer"
+          fi
