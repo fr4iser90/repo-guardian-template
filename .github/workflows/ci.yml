@@ -163,6 +163,17 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # SimpleSecCheck security scanning
+      - name: Run SimpleSecCheck Scanner
+        run: |
+          echo "Running SimpleSecCheck on this repository..."
+          if command -v curl &> /dev/null; then
+            RESPONSE=$(curl -s -X POST "https://scan.fr4iser.com/api/v1/trigger" \
+              -H "Content-Type: application/json" \
+              -d '{"repository": "${{ github.repository }}", "branch": "${{ github.ref_name }}", "commit": "${{ github.sha }}" }' 2>&1 || echo "SimpleSecCheck triggered (non-fatal)")
+            echo "Response: $RESPONSE"
+          fi
       
       # SAST scanning with semgrep
       - name: Run semgrep (SAST)
