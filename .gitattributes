@@ -1,0 +1,30 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Explicitly declare text files you want to always be normalized and converted to native formats on checkout
+*.py text
+*.md text
+*.json text
+*.yaml text
+*.yml text
+*.toml text
+*.sh text
+*.js text
+*.ts text
+*.css text
+*.html text
+
+# CRLF for Windows-specific files
+*.bat eol=crlf
+*.cmd eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+
+# Editor config
+.editorconfig export-ignore
