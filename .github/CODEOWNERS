@@ -1,0 +1,22 @@
+# Code Ownership Rules
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Root files — all maintainers own
+* @fr4iser90
+
+# CI/CD Pipeline configs
+.github/workflows/*.yml @fr4iser90
+
+# Configuration files
+*.toml @fr4iser90
+*.yaml @fr4iser90
+*.yml @fr4iser90
+.env* @fr4iser90
+
+# Documentation (anyone can edit)
+docs/ @fr4iser90
+*.md @fr4iser90
+
+# Security-critical files
+security/ @fr4iser90
+SECURITY.md @fr4iser90
