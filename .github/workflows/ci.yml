@@ -24,7 +24,7 @@ jobs:
     name: Lint (Python + JS/TS)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # Python linting with ruff
       - name: Set up Python ${{ env.PYTHON_VERSION }}
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: lint
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -122,7 +122,7 @@ jobs:
       #     --health-timeout 5s
       #     --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -156,7 +156,7 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # Secret scanning with gitleaks
       - name: Run gitleaks (secret detection)
@@ -188,7 +188,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [lint, type-check]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
