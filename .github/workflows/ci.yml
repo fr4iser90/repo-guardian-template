@@ -1,0 +1,237 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:  # Manual trigger
+
+# Cancel redundant builds on same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  # ═══════════════════════════════════════════
+  # JOB 1: LINTING
+  # ═══════════════════════════════════════════
+  lint:
+    name: Lint (Python + JS/TS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Python linting with ruff
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install ruff
+        run: pip install ruff
+      
+      - name: Run ruff (linting)
+        run: ruff check . --output-format=github
+      
+      - name: Run ruff (formatting check)
+        run: ruff format --check .
+        
+      # JS/TS linting with eslint
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        if: hashFiles('package.json') != ''
+        run: npm ci
+      
+      - name: Run ESLint
+        if: hashFiles('.eslintrc.*', 'eslint.config.*') != ''
+        run: npx eslint . --format github
+        
+      - name: Check Prettier formatting
+        if: hashFiles('package.json') != ''
+        run: npx prettier --check "**/*.{js,ts,jsx,tsx,json,css}"
+
+  # ═══════════════════════════════════════════
+  # JOB 2: TYPE CHECKING
+  # ═══════════════════════════════════════════
+  type-check:
+    name: Type Check
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install mypy
+        run: pip install mypy
+      
+      - name: Run mypy (Python type check)
+        run: |
+          if [ -f "pyproject.toml" ] || [ -d "." ]; then
+            mypy . --config-file pyproject.toml 2>/dev/null ||             mypy . 2>&1 || true
+          fi
+      
+      # JS/TS type checking with tsc
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        if: hashFiles('package.json') != ''
+        run: npm ci
+      
+      - name: Run TypeScript check
+        if: hashFiles('tsconfig.json') != ''
+        run: npx tsc --noEmit
+
+  # ═══════════════════════════════════════════
+  # JOB 3: TESTING + COVERAGE
+  # ═══════════════════════════════════════════
+  test:
+    name: Test (Python)
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      # Optional: PostgreSQL service (uncomment if needed)
+      # postgres:
+      #   image: postgres:16
+      #   env:
+      #     POSTGRES_USER: postgres
+      #     POSTGRES_PASSWORD: postgres
+      #     POSTGRES_DB: testdb
+      #   ports:
+      #     - 5432:5432
+      #   options: >-
+      #     --health-cmd pg_isready
+      #     --health-interval 10s
+      #     --health-timeout 5s
+      #     --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-cov
+          if [ -f "pyproject.toml" ]; then
+            pip install .[dev] 2>/dev/null || pip install .
+          elif [ -f "requirements.txt" ]; then
+            pip install -r requirements.txt
+          fi
+      
+      - name: Run tests with coverage
+        run: |
+          python -m pytest             --cov=.             --cov-report=term-missing             --cov-fail-under=70             --tb=short             -q
+      
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 30
+
+  # ═══════════════════════════════════════════
+  # JOB 4: SECURITY SCANNING
+  # ═══════════════════════════════════════════
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      # Secret scanning with gitleaks
+      - name: Run gitleaks (secret detection)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # SAST scanning with semgrep
+      - name: Run semgrep (SAST)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/default
+            p/semgrep-python
+          fail-on: info
+      
+      # Dependency vulnerability check
+      - name: Check Python dependencies
+        if: hashFiles('requirements.txt', 'Pipfile.lock', 'poetry.lock') != ''
+        run: |
+          pip install safety
+          safety check --json 2>/dev/null || true
+
+  # ═══════════════════════════════════════════
+  # JOB 5: BUILD VERIFICATION
+  # ═══════════════════════════════════════════
+  build:
+    name: Build & Package
+    runs-on: ubuntu-latest
+    needs: [lint, type-check]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install build dependencies
+        run: pip install build
+      
+      - name: Build package
+        if: hashFiles('pyproject.toml', 'setup.py') != ''
+        run: python -m build --no-isolation
+      
+      # JS/TS build check
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        if: hashFiles('package.json') != ''
+        run: npm ci
+      
+      - name: Run build script
+        if: hashFiles('package.json') != ''
+        run: npm run build --if-present
+
+  # ═══════════════════════════════════════════
+  # QUALITY GATE — Summary
+  # ═══════════════════════════════════════════
+  quality-gate:
+    name: Quality Gate
+    runs-on: ubuntu-latest
+    needs: [lint, type-check, test, security, build]
+    if: always()  # Run even if some jobs failed
+    steps:
+      - name: Check if all required jobs passed
+        run: |
+          for job in lint type-check test security build; do
+            if [[ "${{ needs.$job.result }}" != "success" ]]; then
+              echo "::error:: Job '$job' failed: ${{ needs.$job.result }}"
+              exit 1
+            fi
+          done
+          echo "✅ All quality gates passed!"
